@@ -38,7 +38,7 @@ import GHCJS.DOM.MouseEvent
 type AttributeMap = Map String String
 
 data El t
-  = El { _el_element :: HTMLElement
+  = El { _el_element :: Element
        , _el_events :: EventSelector t (WrapArg EventResult EventName)
        }
 
@@ -58,17 +58,17 @@ instance MonadWidget t m => Attributes m (Dynamic t AttributeMap) where
       forM_ (Set.toList $ oldAttrs `Set.difference` Map.keysSet newAttrs) $ elementRemoveAttribute e
       imapM_ (elementSetAttribute e) newAttrs --TODO: avoid re-setting unchanged attributes; possibly do the compare using Align in haskell
 
-buildEmptyElement :: (MonadWidget t m, Attributes m attrs) => String -> attrs -> m HTMLElement
+buildEmptyElement :: (MonadWidget t m, Attributes m attrs) => String -> attrs -> m Element
 buildEmptyElement elementTag attrs = do
   doc <- askDocument
   p <- askParent
   Just e <- liftIO $ documentCreateElement doc elementTag
   addAttributes attrs e
   _ <- liftIO $ nodeAppendChild p $ Just e
-  return $ castToHTMLElement e
+  return $ castToElement e
 
 -- We need to decide what type of attrs we've got statically, because it will often be a recursively defined value, in which case inspecting it will lead to a cycle
-buildElement :: (MonadWidget t m, Attributes m attrs) => String -> attrs -> m a -> m (HTMLElement, a)
+buildElement :: (MonadWidget t m, Attributes m attrs) => String -> attrs -> m a -> m (Element, a)
 buildElement elementTag attrs child = do
   e <- buildEmptyElement elementTag attrs
   result <- subWidget (toNode e) child
@@ -631,7 +631,7 @@ defaultDomEventHandler e evt = liftM (Just . EventResult) $ case evt of
   Focus -> return ()
   Blur -> return ()
 
-wrapElement :: forall t h m. (Functor (Event t), MonadIO m, MonadSample t m, MonadReflexCreateTrigger t m, Reflex t, HasPostGui t h m) => HTMLElement -> m (El t)
+wrapElement :: forall t h m. (Functor (Event t), MonadIO m, MonadSample t m, MonadReflexCreateTrigger t m, Reflex t, HasPostGui t h m) => Element -> m (El t)
 wrapElement e = do
   es <- wrapDomEventsMaybe e $ defaultDomEventHandler e
   return $ El e es
@@ -684,17 +684,19 @@ simpleList xs mkChild = mapDyn (map snd . Map.toList) =<< flip list mkChild =<< 
 
 elDynHtml' :: MonadWidget t m => String -> Dynamic t String -> m (El t)
 elDynHtml' elementTag html = do
-  e <- buildEmptyElement elementTag (Map.empty :: Map String String)
+  e' <- buildEmptyElement elementTag (Map.empty :: Map String String)
+  let e = castToHTMLElement e'
   schedulePostBuild $ liftIO . htmlElementSetInnerHTML e =<< sample (current html)
   addVoidAction $ fmap (liftIO . htmlElementSetInnerHTML e) $ updated html
-  wrapElement e
+  wrapElement e'
 
 elDynHtmlAttr' :: MonadWidget t m => String -> Map String String -> Dynamic t String -> m (El t)
 elDynHtmlAttr' elementTag attrs html = do
-  e <- buildEmptyElement elementTag attrs
+  e' <- buildEmptyElement elementTag attrs
+  let e = castToHTMLElement e'
   schedulePostBuild $ liftIO . htmlElementSetInnerHTML e =<< sample (current html)
   addVoidAction $ fmap (liftIO . htmlElementSetInnerHTML e) $ updated html
-  wrapElement e
+  wrapElement e'
 
 {-
 
@@ -794,7 +796,7 @@ tabDisplay ulClass activeClass tabItems = do
         return $ fmap (const k) (_link_clicked a)
 
 -- | Place an element into the DOM and wrap it with Reflex event handlers.  Note: undefined behavior may result if the element is placed multiple times, removed from the DOM after being placed, or in other situations.  Don't use this unless you understand the internals of MonadWidget.
-unsafePlaceElement :: MonadWidget t m => HTMLElement -> m (El t)
+unsafePlaceElement :: MonadWidget t m => Element -> m (El t)
 unsafePlaceElement e = do
   p <- askParent
   _ <- liftIO $ nodeAppendChild p $ Just e

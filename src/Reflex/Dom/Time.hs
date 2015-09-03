@@ -1,3 +1,4 @@
+{-# LANGUAGE TemplateHaskell #-}
 module Reflex.Dom.Time where
 
 import Reflex
@@ -9,6 +10,7 @@ import Control.Monad.IO.Class
 import Data.Fixed
 import Data.Time.Clock
 import Data.Typeable
+import Control.Lens
 
 data TickInfo
   = TickInfo { _tickInfo_lastUTC :: UTCTime
@@ -20,8 +22,8 @@ data TickInfo
              }
   deriving (Eq, Ord, Typeable)
 
--- | Special case of tickLossyFrom that uses the post-build event to start the
 --   tick thread.
+-- | Special case of tickLossyFrom that uses the post-build event to start the
 tickLossy :: MonadWidget t m => NominalDiffTime -> UTCTime -> m (Event t TickInfo)
 tickLossy dt t0 = tickLossyFrom dt t0 =<< getPostBuild
 
@@ -49,3 +51,5 @@ delay :: MonadWidget t m => NominalDiffTime -> Event t a -> m (Event t a)
 delay dt e = performEventAsync $ ffor e $ \a cb -> liftIO $ void $ forkIO $ do
   threadDelay $ ceiling $ dt * 1000000
   cb a
+
+$(makeLenses ''TickInfo)
